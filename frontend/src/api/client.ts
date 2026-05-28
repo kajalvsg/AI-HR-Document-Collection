@@ -3,7 +3,7 @@ import axios, { AxiosError } from 'axios'
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ||
   "http://localhost:5000/api";
-  
+
   console.log("API URL:", API_BASE_URL)
 
 export const apiClient = axios.create({
