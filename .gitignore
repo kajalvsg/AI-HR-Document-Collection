@@ -1,0 +1,10 @@
+﻿backend/venv/
+frontend/node_modules/
+backend/.env
+backend/instance/*.db
+backend/uploads/resumes/*
+backend/uploads/documents/*
+!backend/uploads/.gitkeep
+!backend/uploads/resumes/.gitkeep
+!backend/uploads/documents/.gitkeep
+
