@@ -46,6 +46,26 @@ class AIServiceTests(unittest.TestCase):
         message = AIService._template_message(self._candidate())
         self.assertIn("Regards,\nHR Team", message)
         self.assertIn("Engineering Intern", message)
+        self.assertIn("role at Hungerbox", message)
+
+    def test_template_omits_noisy_company(self):
+        candidate = self._candidate(
+            company="Hungerbox Created A Unified Generic Notification Module",
+            designation="Software Engineer",
+        )
+        message = AIService._template_message(candidate)
+        self.assertIn("for the Software Engineer role", message)
+        self.assertNotIn("Unified Generic", message)
+        self.assertNotIn("role at Hungerbox", message)
+
+    def test_template_coinbase_style(self):
+        candidate = self._candidate(
+            company="Coinbase; previously at D.E. Shaw on firm-wide quant data",
+            designation="Software Engineer",
+        )
+        message = AIService._template_message(candidate)
+        self.assertIn("for the Software Engineer role at Coinbase", message)
+        self.assertNotIn("D.E. Shaw", message)
 
     @patch("app.services.ai_service.requests.post")
     def test_ai_source_on_success(self, mock_post):

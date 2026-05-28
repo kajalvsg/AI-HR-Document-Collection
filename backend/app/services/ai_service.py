@@ -6,6 +6,10 @@ from flask import current_app
 
 from app.config import load_environment
 from app.models import Candidate
+from app.services.field_cleaning import (
+    company_for_message,
+    designation_for_message,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -182,14 +186,10 @@ class AIService:
             docs = missing[0].replace(" card", "")
 
         name = AIService._clean_field(candidate.name, MAX_NAME_LEN) or "Candidate"
-        designation = (
-            AIService._clean_field(candidate.designation, MAX_DESIGNATION_LEN)
-            or "the role you applied for"
+        designation = designation_for_message(candidate.designation) or (
+            "the role you applied for"
         )
-        company = (
-            AIService._clean_field(candidate.company, MAX_COMPANY_LEN)
-            or "our organization"
-        )
+        company = company_for_message(candidate.company)
         email = AIService._clean_email(candidate.email)
 
         return {
@@ -207,12 +207,14 @@ class AIService:
             "Use ONLY these facts (do not invent or add anything else):\n"
             f"- Candidate name: {fields['name']}\n"
             f"- Designation: {fields['designation']}\n"
-            f"- Company: {fields['company']}\n"
+            f"- Company: {fields['company'] or '(omit from message)'}\n"
             f"- Registered email: {fields['email']}\n"
             f"- Documents needed: PAN and Aadhaar\n\n"
             "Format requirements:\n"
             "- Start with 'Dear {name},'\n"
-            "- One short congratulatory sentence mentioning designation and company\n"
+            "- One short congratulatory sentence mentioning the designation"
+            + (" and company" if fields["company"] else "")
+            + "\n"
             f"- Include this EXACT sentence on its own line:\n  {REQUIRED_REQUEST_SENTENCE}\n"
             "- Mention accepted formats: PDF or clear image\n"
             "- End with 'Regards,\\nHR Team'\n"
@@ -297,17 +299,27 @@ class AIService:
     def _template_message(candidate: Candidate) -> str:
         fields = AIService._structured_fields(candidate)
         name = fields["name"]
-        role = fields["designation"]
-        company = fields["company"]
+        congrats = AIService._congratulations_line(fields["designation"], fields["company"])
 
         return (
             f"Dear {name},\n\n"
-            f"Congratulations on moving forward in the hiring process for the {role} "
-            f"role at {company}.\n\n"
+            f"{congrats}\n\n"
             f"{REQUIRED_REQUEST_SENTENCE}\n"
             f"Accepted formats: PDF or clear image.\n\n"
             f"Regards,\nHR Team"
         )
+
+    @staticmethod
+    def _congratulations_line(designation: str, company: str | None) -> str:
+        role = designation or "the role you applied for"
+        line = (
+            "Congratulations on moving forward in the hiring process "
+            f"for the {role} role"
+        )
+        if company:
+            line += f" at {company}"
+        line += "."
+        return line
 
     # Backward-compatible alias for tests
     _fallback_message = _template_message

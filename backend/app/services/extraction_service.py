@@ -1,6 +1,8 @@
 import re
 from dataclasses import dataclass, field
 
+from app.services.field_cleaning import clean_company, clean_designation
+
 KEY_FIELDS = ("name", "email", "phone", "company", "designation", "skills")
 
 # Local: must start/end with alphanumeric; domain with valid TLD (word boundaries).
@@ -141,6 +143,9 @@ class CandidateExtractionService:
         result.skills, result.confidence_scores["skills"] = (
             CandidateExtractionService._extract_skills(normalized)
         )
+
+        result.company = clean_company(result.company)
+        result.designation = clean_designation(result.designation)
 
         result.overall_confidence = CandidateExtractionService._overall_confidence(
             result.confidence_scores
