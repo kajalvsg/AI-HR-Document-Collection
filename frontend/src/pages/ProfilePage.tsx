@@ -86,6 +86,10 @@ export default function ProfilePage() {
   const hasAadhaar = documents.some((d) => d.document_type === 'aadhaar')
   const documentsComplete = candidate?.document_status === 'complete'
 
+  const hasDeliverableEmail = Boolean(
+    candidate?.email && !candidate.email.toLowerCase().includes('@extract.pending'),
+  )
+
   const hasAiRequest = useMemo(
     () =>
       (candidate?.request_logs ?? []).some(
@@ -104,7 +108,10 @@ export default function ProfilePage() {
       if (!response.success || !response.data) {
         throw new Error(response.message || 'Failed to generate request')
       }
-      setRequestSuccess('Document request message generated.')
+      setRequestSuccess(
+        response.message ||
+          'Document request generated and email simulated successfully',
+      )
       await loadCandidate()
     } catch (err) {
       setRequestError(getErrorMessage(err))
@@ -299,23 +306,34 @@ export default function ProfilePage() {
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Document request</h2>
             <p className="mt-1 text-sm text-slate-500">
-              Generate a personalized PAN/Aadhaar collection message for this candidate.
+              Generate a personalized PAN/Aadhaar message and simulate sending it via
+              email to the candidate (no real email is sent yet).
             </p>
           </div>
           <button
             type="button"
             onClick={handleRequestDocuments}
-            disabled={requestLoading || hasAiRequest || documentsComplete}
+            disabled={
+              requestLoading ||
+              hasAiRequest ||
+              documentsComplete ||
+              !hasDeliverableEmail
+            }
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Send className="h-4 w-4" />
             {requestLoading
-              ? 'Generating…'
+              ? 'Sending…'
               : hasAiRequest
                 ? 'Request already sent'
-                : 'Request Documents'}
+                : 'Generate & Send Request'}
           </button>
         </div>
+        {!hasDeliverableEmail && (
+          <p className="mt-3 text-sm text-amber-700">
+            A valid candidate email is required before a document request can be sent.
+          </p>
+        )}
         {hasAiRequest && (
           <p className="mt-3 text-sm text-slate-500">
             A document request has already been generated. See request logs below.

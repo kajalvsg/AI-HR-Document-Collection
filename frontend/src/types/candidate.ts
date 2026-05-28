@@ -31,6 +31,9 @@ export interface RequestLog {
   message: string | null
   status: string
   source: 'ai' | 'template' | 'fallback'
+  channel: string
+  recipient: string | null
+  delivery_status: string | null
   created_at: string | null
 }
 
@@ -59,6 +62,9 @@ export interface RequestDocumentsData {
   message: string
   status: string
   source: 'ai' | 'template' | 'fallback'
+  channel: string
+  recipient: string
+  delivery_status: string
   request_log: RequestLog
 }
 

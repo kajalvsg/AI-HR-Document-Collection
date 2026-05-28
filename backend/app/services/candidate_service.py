@@ -115,8 +115,23 @@ class CandidateService:
         return candidate
 
     @staticmethod
+    def _has_deliverable_email(candidate: Candidate) -> bool:
+        email = (candidate.email or "").strip().lower()
+        if not email:
+            return False
+        return "@extract.pending" not in email
+
+    @staticmethod
     def request_documents(candidate_id: int) -> dict:
         candidate = CandidateService.get_candidate(candidate_id)
+        if not CandidateService._has_deliverable_email(candidate):
+            raise AppError(
+                "Candidate email is required to send a document request",
+                400,
+                "missing_email",
+            )
+
+        recipient = candidate.email.strip()
         message, status, message_source = (
             AIService.generate_document_request_message(candidate)
         )
@@ -127,6 +142,9 @@ class CandidateService:
             message=message,
             status=status,
             message_source=message_source,
+            channel="email",
+            recipient=recipient,
+            delivery_status="sent_simulated",
             error_detail=None,
         )
         db.session.add(log)
@@ -137,6 +155,9 @@ class CandidateService:
             "message": message,
             "status": status,
             "source": message_source,
+            "channel": log.channel,
+            "recipient": log.recipient,
+            "delivery_status": log.delivery_status,
             "request_log": log.to_public_dict(),
         }
 

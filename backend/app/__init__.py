@@ -32,6 +32,30 @@ def _ensure_schema() -> None:
             )
         )
         db.session.commit()
+        columns = {col["name"] for col in inspector.get_columns("request_logs")}
+
+    if "channel" not in columns:
+        db.session.execute(
+            text(
+                "ALTER TABLE request_logs "
+                "ADD COLUMN channel VARCHAR(32) NOT NULL DEFAULT 'email'"
+            )
+        )
+        db.session.commit()
+        columns = {col["name"] for col in inspector.get_columns("request_logs")}
+
+    if "recipient" not in columns:
+        db.session.execute(
+            text("ALTER TABLE request_logs ADD COLUMN recipient VARCHAR(255)")
+        )
+        db.session.commit()
+        columns = {col["name"] for col in inspector.get_columns("request_logs")}
+
+    if "delivery_status" not in columns:
+        db.session.execute(
+            text("ALTER TABLE request_logs ADD COLUMN delivery_status VARCHAR(32)")
+        )
+        db.session.commit()
 
 
 def create_app(config_name: str | None = None) -> Flask:

@@ -49,7 +49,7 @@ def request_documents(candidate_id: int):
     result = CandidateService.request_documents(candidate_id)
     return success_response(
         data=result,
-        message="Document request message generated",
+        message="Document request generated and email simulated successfully",
     )
 
 

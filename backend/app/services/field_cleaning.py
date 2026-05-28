@@ -67,6 +67,53 @@ _ROLE_KEYWORDS = (
     "qa",
 )
 
+# Longest phrases first so "Software Engineer Intern" is not cut at "Engineer".
+_ROLE_TITLE_PHRASES = tuple(
+    sorted(
+        (
+            "software engineer intern",
+            "software development engineer intern",
+            "software development engineer",
+            "software engineer",
+            "data engineer intern",
+            "data scientist intern",
+            "product manager intern",
+            "business analyst intern",
+            "technical team member",
+            "team member",
+            "engineer intern",
+            "developer intern",
+            "engineering intern",
+            "intern",
+            "engineer",
+            "developer",
+            "manager",
+            "analyst",
+            "consultant",
+            "architect",
+            "director",
+            "specialist",
+            "associate",
+            "coordinator",
+            "administrator",
+            "scientist",
+            "designer",
+            "tester",
+            "trainee",
+            "fellow",
+            "member",
+        ),
+        key=len,
+        reverse=True,
+    )
+)
+
+_LOCATION_TAIL = re.compile(
+    r",|\b(?:india|usa|uk|uae|remote|bangalore|bengaluru|mumbai|delhi|hyderabad|"
+    r"pune|chennai|kolkata|gurgaon|gurugram|noida)\b",
+    re.IGNORECASE,
+)
+
 
 def clean_company(value: str | None) -> str | None:
     """Return a short organization name (max 4 words) or None."""
@@ -83,8 +130,35 @@ def clean_designation(value: str | None) -> str | None:
     if not text:
         return None
     text = _take_title_segment(text)
+    text = strip_trailing_location_from_title(text)
     text = _limit_words(text, MAX_DESIGNATION_WORDS)
     return text or None
+
+
+def strip_trailing_location_from_title(text: str) -> str:
+    """Remove trailing city/country from a role line (keeps full titles like Intern)."""
+    cleaned = text.strip()
+    if not cleaned:
+        return cleaned
+
+    lower = cleaned.lower()
+    title_end = -1
+    for phrase in _ROLE_TITLE_PHRASES:
+        index = lower.find(phrase)
+        if index == -1:
+            continue
+        end = index + len(phrase)
+        if end > title_end:
+            title_end = end
+
+    if title_end == -1:
+        return cleaned
+
+    title = cleaned[:title_end].strip()
+    remainder = cleaned[title_end:].strip()
+    if remainder and _LOCATION_TAIL.search(remainder):
+        return title
+    return cleaned
 
 
 def is_usable_company(cleaned: str | None, original: str | None = None) -> bool:

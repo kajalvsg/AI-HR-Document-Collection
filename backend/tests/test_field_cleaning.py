@@ -7,6 +7,7 @@ from app.services.field_cleaning import (
     designation_for_message,
     is_usable_company,
     is_usable_designation,
+    strip_trailing_location_from_title,
 )
 
 
@@ -38,6 +39,14 @@ class FieldCleaningTests(unittest.TestCase):
     def test_clean_designation_title_pipe_company(self):
         raw = "Software Engineer | Coinbase"
         self.assertEqual(clean_designation(raw), "Software Engineer")
+
+    def test_strip_location_keeps_intern_suffix(self):
+        raw = "Software Engineer Intern Bangalore, India"
+        self.assertEqual(
+            strip_trailing_location_from_title(raw),
+            "Software Engineer Intern",
+        )
+        self.assertEqual(clean_designation(raw), "Software Engineer Intern")
 
     def test_designation_noise_not_usable(self):
         raw = "Hungerbox Created A Unified Generic Notification Module"

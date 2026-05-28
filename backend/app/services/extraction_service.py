@@ -1,7 +1,11 @@
 import re
 from dataclasses import dataclass, field
 
-from app.services.field_cleaning import clean_company, clean_designation
+from app.services.field_cleaning import (
+    clean_company,
+    clean_designation,
+    strip_trailing_location_from_title,
+)
 
 KEY_FIELDS = ("name", "email", "phone", "company", "designation", "skills")
 
@@ -74,8 +78,78 @@ EXPERIENCE_AT_PATTERN = re.compile(
     r"(?:at|@)\s+([A-Z][A-Za-z0-9&\s.,'-]{2,60})(?:\s*[|,|\n]|$)"
 )
 TITLE_LINE_PATTERN = re.compile(
-    r"(?:^|\n)\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,4})\s*(?:\||-)\s*([A-Za-z0-9&\s.'-]{2,80})"
+    r"(?:^|\n)\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,4})\s*\|\s*([A-Za-z0-9&\s.'-]{2,80})"
 )
+
+WORK_EXPERIENCE_HEADING = re.compile(
+    r"^(?:work\s+experience|professional\s+experience|relevant\s+experience|"
+    r"internship(?:\s+experience)?|internships|employment(?:\s+history)?|"
+    r"work\s+history|career\s+experience)\s*:?\s*$",
+    re.IGNORECASE,
+)
+
+SECTION_STOP_HEADING = re.compile(
+    r"^(?:projects?(?:\s+experience)?|education|academic(?:\s+background)?|"
+    r"skills?|technical\s+skills|core\s+skills|awards?(?:\s+(?:and|&)\s+recognition)?|"
+    r"recognition|achievements?|honors?(?:\s+and\s+awards)?|coding\s+profile|"
+    r"leetcode|codeforces|hackerrank|certifications?|certificates?|"
+    r"extracurricular(?:\s+activities)?|activities|leadership|publications?|"
+    r"references?|summary|objective|profile|contact|volunteer|interests?|hobbies)"
+    r"\s*:?\s*$",
+    re.IGNORECASE,
+)
+
+LOW_PRIORITY_SECTION_HEADING = re.compile(
+    r"^(?:projects?(?:\s+experience)?|education|academic(?:\s+background)?|"
+    r"skills?|technical\s+skills|core\s+skills|awards?(?:\s+(?:and|&)\s+recognition)?|"
+    r"recognition|achievements?|honors?(?:\s+and\s+awards)?|coding\s+profile|"
+    r"leetcode|codeforces|hackerrank|certifications?|certificates?|"
+    r"extracurricular(?:\s+activities)?|activities|leadership|publications?|"
+    r"references?|summary|objective|profile|contact|volunteer|interests?|hobbies)"
+    r"\s*:?\s*$",
+    re.IGNORECASE,
+)
+
+DATE_RANGE_SUFFIX = re.compile(
+    r"\s+(?:"
+    r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|"
+    r"jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|"
+    r"dec(?:ember)?)\.?\s+\d{4}|\d{4})"
+    r"\s*[-–—]\s*"
+    r"(?:"
+    r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|"
+    r"jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|"
+    r"dec(?:ember)?)\.?\s+\d{4}|present|current|\d{4}"
+    r")"
+    r"\s*$",
+    re.IGNORECASE,
+)
+
+ROLE_KEYWORDS = (
+    "engineer",
+    "developer",
+    "manager",
+    "analyst",
+    "consultant",
+    "lead",
+    "architect",
+    "intern",
+    "director",
+    "specialist",
+    "associate",
+    "executive",
+    "officer",
+    "scientist",
+    "designer",
+    "administrator",
+    "coordinator",
+    "trainee",
+    "fellow",
+    "member",
+    "tester",
+)
+
+BULLET_LINE = re.compile(r"^[\-\*•●▪◦]\s+")
 
 COMMON_SKILLS = {
     "python", "java", "javascript", "typescript", "react", "node", "nodejs",
@@ -386,11 +460,21 @@ class CandidateExtractionService:
             company = label_match.group(1).strip().split("\n")[0][:120]
             return company, 0.88
 
-        exp_match = EXPERIENCE_AT_PATTERN.search(text)
+        work_company, _, work_conf = (
+            CandidateExtractionService._extract_work_experience_fields(lines)
+        )
+        if work_company:
+            return work_company, work_conf
+
+        safe_lines = CandidateExtractionService._fallback_scan_lines(lines)
+
+        exp_match = EXPERIENCE_AT_PATTERN.search(
+            "\n".join(safe_lines) if safe_lines else text
+        )
         if exp_match:
             return exp_match.group(1).strip(), 0.6
 
-        for line in lines:
+        for line in safe_lines:
             lower = line.lower()
             if "experience" in lower or "employment" in lower:
                 continue
@@ -399,7 +483,9 @@ class CandidateExtractionService:
                 if len(parts) == 2 and len(parts[1]) > 2:
                     return parts[1].strip()[:120], 0.55
 
-        title_match = TITLE_LINE_PATTERN.search(text)
+        title_match = TITLE_LINE_PATTERN.search(
+            "\n".join(safe_lines) if safe_lines else text
+        )
         if title_match:
             return title_match.group(2).strip()[:120], 0.5
 
@@ -412,28 +498,222 @@ class CandidateExtractionService:
             role = label_match.group(1).strip().split("\n")[0][:120]
             return role, 0.9
 
-        title_match = TITLE_LINE_PATTERN.search(text)
+        _, work_designation, work_conf = (
+            CandidateExtractionService._extract_work_experience_fields(lines)
+        )
+        if work_designation:
+            return work_designation, work_conf
+
+        safe_lines = CandidateExtractionService._fallback_scan_lines(lines)
+
+        scan_text = "\n".join(safe_lines) if safe_lines else text
+        title_match = TITLE_LINE_PATTERN.search(scan_text)
         if title_match:
             return title_match.group(1).strip()[:120], 0.65
 
-        role_keywords = (
-            "engineer",
-            "developer",
-            "manager",
-            "analyst",
-            "consultant",
-            "lead",
-            "architect",
-            "intern",
-            "director",
-            "specialist",
-        )
-        for line in lines[:12]:
+        for line in safe_lines[:20]:
             lower = line.lower()
-            if any(kw in lower for kw in role_keywords) and len(line) < 80:
-                return line.strip()[:120], 0.5
+            if CandidateExtractionService._looks_like_designation_line(line):
+                return (
+                    CandidateExtractionService._strip_location_from_designation(
+                        line
+                    )[:120],
+                    0.5,
+                )
 
         return None, 0.0
+
+    @staticmethod
+    def _extract_work_experience_fields(
+        lines: list[str],
+    ) -> tuple[str | None, str | None, float]:
+        block = CandidateExtractionService._work_experience_block(lines)
+        if not block:
+            return None, None, 0.0
+
+        company, designation = CandidateExtractionService._parse_first_work_entry(
+            block
+        )
+        if company or designation:
+            return company, designation, 0.93
+        return None, None, 0.0
+
+    @staticmethod
+    def _work_experience_block(lines: list[str]) -> list[str] | None:
+        start: int | None = None
+        for index, line in enumerate(lines):
+            if WORK_EXPERIENCE_HEADING.match(line.strip()):
+                start = index + 1
+                break
+
+        if start is None:
+            return None
+
+        block: list[str] = []
+        for line in lines[start:]:
+            if SECTION_STOP_HEADING.match(line.strip()):
+                break
+            block.append(line)
+        return block or None
+
+    @staticmethod
+    def _fallback_scan_lines(lines: list[str]) -> list[str]:
+        """Lines allowed for fallback parsing when work experience is missing or empty."""
+        if CandidateExtractionService._work_experience_block(lines):
+            return CandidateExtractionService._lines_outside_low_priority_sections(
+                lines
+            )
+        return lines
+
+    @staticmethod
+    def _lines_outside_low_priority_sections(lines: list[str]) -> list[str]:
+        kept: list[str] = []
+        skipping = False
+        for line in lines:
+            stripped = line.strip()
+            if LOW_PRIORITY_SECTION_HEADING.match(stripped):
+                skipping = True
+                continue
+            if WORK_EXPERIENCE_HEADING.match(stripped):
+                skipping = False
+            if not skipping:
+                kept.append(line)
+        return kept
+
+    @staticmethod
+    def _parse_first_work_entry(
+        block_lines: list[str],
+    ) -> tuple[str | None, str | None]:
+        entries = CandidateExtractionService._split_work_entries(block_lines)
+        if not entries:
+            return None, None
+        return CandidateExtractionService._parse_work_entry_lines(entries[0])
+
+    @staticmethod
+    def _split_work_entries(block_lines: list[str]) -> list[list[str]]:
+        entries: list[list[str]] = []
+        current: list[str] = []
+
+        for line in block_lines:
+            if BULLET_LINE.match(line):
+                current.append(line)
+                continue
+
+            if (
+                current
+                and not BULLET_LINE.match(line)
+                and CandidateExtractionService._looks_like_company_line(line)
+                and any(
+                    CandidateExtractionService._looks_like_designation_line(entry_line)
+                    or DATE_RANGE_SUFFIX.search(entry_line)
+                    for entry_line in current
+                    if not BULLET_LINE.match(entry_line)
+                )
+            ):
+                entries.append(current)
+                current = [line]
+                continue
+
+            current.append(line)
+
+        if current:
+            entries.append(current)
+        return entries
+
+    @staticmethod
+    def _parse_work_entry_lines(entry_lines: list[str]) -> tuple[str | None, str | None]:
+        content_lines = [
+            line
+            for line in entry_lines
+            if line.strip() and not BULLET_LINE.match(line)
+        ]
+        if not content_lines:
+            return None, None
+
+        first = content_lines[0]
+        title_pipe = TITLE_LINE_PATTERN.search(first)
+        if title_pipe:
+            return (
+                title_pipe.group(2).strip(),
+                CandidateExtractionService._strip_location_from_designation(
+                    title_pipe.group(1).strip()
+                ),
+            )
+
+        at_parts = re.split(r"\s+at\s+", first, maxsplit=1, flags=re.IGNORECASE)
+        if (
+            len(at_parts) == 2
+            and CandidateExtractionService._looks_like_designation_line(at_parts[0])
+        ):
+            return (
+                CandidateExtractionService._strip_dates_from_company_line(
+                    at_parts[1].strip()
+                ),
+                CandidateExtractionService._strip_location_from_designation(
+                    at_parts[0].strip()
+                ),
+            )
+
+        if (
+            len(content_lines) >= 2
+            and CandidateExtractionService._looks_like_designation_line(content_lines[1])
+        ):
+            company = CandidateExtractionService._strip_dates_from_company_line(first)
+            designation = CandidateExtractionService._strip_location_from_designation(
+                content_lines[1]
+            )
+            return company, designation
+
+        if CandidateExtractionService._looks_like_designation_line(first):
+            designation = CandidateExtractionService._strip_location_from_designation(
+                first
+            )
+            return None, designation
+
+        if CandidateExtractionService._looks_like_company_line(first):
+            return CandidateExtractionService._strip_dates_from_company_line(first), None
+
+        return None, None
+
+    @staticmethod
+    def _looks_like_designation_line(line: str) -> bool:
+        lower = line.lower()
+        return any(kw in lower for kw in ROLE_KEYWORDS)
+
+    @staticmethod
+    def _looks_like_company_line(line: str) -> bool:
+        if CandidateExtractionService._looks_like_designation_line(line):
+            if DATE_RANGE_SUFFIX.search(line):
+                return True
+            if " at " in line.lower():
+                return False
+            return not CandidateExtractionService._designation_heavier_than_company(line)
+        return bool(line.strip())
+
+    @staticmethod
+    def _designation_heavier_than_company(line: str) -> bool:
+        lower = line.lower()
+        role_hits = sum(1 for kw in ROLE_KEYWORDS if kw in lower)
+        return role_hits >= 2 or (
+            role_hits >= 1 and len(line.split()) <= 5 and not DATE_RANGE_SUFFIX.search(line)
+        )
+
+    @staticmethod
+    def _strip_dates_from_company_line(line: str) -> str:
+        text = DATE_RANGE_SUFFIX.sub("", line).strip()
+        text = re.sub(
+            r"\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|"
+            r"jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|"
+            r"dec(?:ember)?)\.?\s+\d{4}\s*$",
+            "",
+            text,
+            flags=re.IGNORECASE,
+        ).strip()
+        return text
+
+    @staticmethod
+    def _strip_location_from_designation(line: str) -> str:
+        return strip_trailing_location_from_title(line.strip())
 
     @staticmethod
     def _extract_skills(text: str) -> tuple[list[str], float]:

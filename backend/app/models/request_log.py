@@ -18,6 +18,9 @@ class RequestLog(db.Model):
     message = db.Column(db.Text, nullable=True)
     status = db.Column(db.String(32), nullable=False, default="success")  # success | failed
     message_source = db.Column(db.String(16), nullable=False, default="template")  # ai | template
+    channel = db.Column(db.String(32), nullable=False, default="email")
+    recipient = db.Column(db.String(255), nullable=True)
+    delivery_status = db.Column(db.String(32), nullable=True)
     error_detail = db.Column(db.Text, nullable=True)  # internal only — never expose via API
     created_at = db.Column(db.DateTime, nullable=False, default=_utcnow)
 
@@ -34,5 +37,8 @@ class RequestLog(db.Model):
             "message": self.message,
             "status": self.status,
             "source": self.message_source,
+            "channel": self.channel,
+            "recipient": self.recipient,
+            "delivery_status": self.delivery_status,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
